@@ -121,6 +121,17 @@ export default function Timeline(props: Props) {
     };
   }, [pps, setPps]);
 
+  // snap a time to the playhead / clip edges when within ~10 px (like Premiere's snapping)
+  const snap = (t: number, len = 0) => {
+    const pts = [0, time, ...starts, ...p.clips.map((c, i) => starts[i] + clipDur(c))];
+    const tol = 10 / pps;
+    for (const q of pts) {
+      if (Math.abs(t - q) < tol) return q;
+      if (len && Math.abs(t + len - q) < tol) return q - len;
+    }
+    return Math.max(0, t);
+  };
+
   // generic horizontal drag helper
   const dragStart = (e: React.PointerEvent, onMove: (dx: number) => void, onEnd: (dx: number) => void) => {
     e.stopPropagation();
@@ -177,7 +188,7 @@ export default function Timeline(props: Props) {
                     e.stopPropagation();
                     if (!on) return onSelect({ kind: 'title', id: t.id });
                     const s0 = t.start;
-                    dragStart(e, (dx) => props.onMoveTitle(t.id, Math.max(0, s0 + dx / pps), t.duration, false), (dx) => props.onMoveTitle(t.id, Math.max(0, s0 + dx / pps), t.duration, true));
+                    dragStart(e, (dx) => props.onMoveTitle(t.id, snap(s0 + dx / pps, t.duration), t.duration, false), (dx) => props.onMoveTitle(t.id, snap(s0 + dx / pps, t.duration), t.duration, true));
                   }}
                 >
                   <Type size={11} className="shrink-0" /> <span className="truncate">{t.text || 'Title'}</span>
@@ -296,7 +307,7 @@ export default function Timeline(props: Props) {
                     e.stopPropagation();
                     if (!on) return onSelect({ kind: 'audio', id: a.id });
                     const s0 = a.start;
-                    dragStart(e, (dx) => props.onMoveAudio(a.id, Math.max(0, s0 + dx / pps), a.in, a.out, false), (dx) => props.onMoveAudio(a.id, Math.max(0, s0 + dx / pps), a.in, a.out, true));
+                    dragStart(e, (dx) => props.onMoveAudio(a.id, snap(s0 + dx / pps, a.out - a.in), a.in, a.out, false), (dx) => props.onMoveAudio(a.id, snap(s0 + dx / pps, a.out - a.in), a.in, a.out, true));
                   }}
                 >
                   {wave && <Wave peaks={wave} from={a.in / (m?.duration || 1)} to={a.out / (m?.duration || 1)} width={Math.max(8, w)} height={28} color="rgba(190,255,215,.75)" />}

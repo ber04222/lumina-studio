@@ -21,7 +21,7 @@ const GROUPS: Record<Exclude<AIKind, 'subject' | 'background'>, string[]> = {
   people: ['person'],
   vegetation: ['tree', 'grass', 'plant', 'flower', 'palm', 'field'],
   water: ['water', 'sea', 'river', 'lake', 'swimming pool', 'waterfall', 'fountain'],
-  buildings: ['building', 'house', 'skyscraper', 'tower', 'bridge', 'hovel', 'column', 'awning', 'booth', 'stage', 'wall'],
+  buildings: ['building', 'house', 'skyscraper', 'tower', 'bridge', 'hovel', 'column', 'awning', 'booth', 'stage'],
   ground: ['floor', 'road', 'sidewalk', 'earth', 'sand', 'path', 'land', 'dirt track', 'runway', 'rug', 'stairs', 'step', 'mountain', 'hill', 'rock'],
 };
 const THINGS = new Set([

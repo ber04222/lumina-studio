@@ -1,4 +1,57 @@
-import { Aperture, Clapperboard, Sparkles, Palette, Layers, Wand2, Film, ShieldCheck } from 'lucide-react';
+import * as React from 'react';
+import { Aperture, Clapperboard, Sparkles, Palette, Layers, Wand2, Film, ShieldCheck, HardDriveDownload, HardDriveUpload, Loader2 } from 'lucide-react';
+import { useFilePicker, useToast } from '@/components/ui';
+import { downloadBlob } from '@/lib/db';
+import { createBackup, restoreBackup } from '@/lib/backup';
+
+function DataCard() {
+  const toast = useToast();
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [usage, setUsage] = React.useState('');
+  const [persisted, setPersisted] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    navigator.storage?.estimate?.().then((e) => setUsage(e.usage ? `${(e.usage / 1e6).toFixed(0)} MB used on this device` : '')).catch(() => undefined);
+    navigator.storage?.persisted?.().then(setPersisted).catch(() => undefined);
+  }, [busy]);
+  const backup = async () => {
+    setBusy('Preparing backup…');
+    try {
+      const { blob, count } = await createBackup((m) => setBusy(m));
+      const d = new Date().toISOString().slice(0, 10);
+      if (await downloadBlob(blob, `lumina-backup-${d}.zip`)) toast(`Backup saved (${count} media files, ${(blob.size / 1e6).toFixed(0)} MB)`, 'ok');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Backup failed', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const pick = useFilePicker('.zip,application/zip', false, async (f) => {
+    if (!f[0]) return;
+    setBusy('Restoring…');
+    try {
+      const r = await restoreBackup(f[0]);
+      toast(`Restored ${r.photos} photos and ${r.projects} video projects`, 'ok');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Restore failed', 'error');
+    } finally {
+      setBusy(null);
+    }
+  });
+  return (
+    <section className="mt-6 rounded-2xl bg-panel p-4 ring-1 ring-line">
+      <div className="flex items-center gap-2 text-[14px] font-semibold"><ShieldCheck size={16} className="text-accent" /> Your data</div>
+      <p className="mt-1 text-[12px] leading-relaxed text-dim">
+        Photos, videos and edits are stored only in this browser on this device — nothing is uploaded. Browsers can clear site data, so keep a backup file (save it to Google Drive or your computer).
+        {usage && <span className="block text-faint">{usage}{persisted === false ? ' · storage may be cleared when space is low' : persisted ? ' · protected from automatic clearing' : ''}</span>}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button type="button" className="btn-solid" disabled={!!busy} onClick={backup}>{busy ? <Loader2 size={15} className="animate-spin" /> : <HardDriveDownload size={15} />} Back up library</button>
+        <button type="button" className="btn-solid" disabled={!!busy} onClick={pick}><HardDriveUpload size={15} /> Restore backup</button>
+      </div>
+      {busy && <div className="mt-2 text-[12px] text-dim">{busy}</div>}
+    </section>
+  );
+}
 
 export default function Home({ onOpen }: { onOpen: (s: 'photo' | 'video') => void }) {
   return (
@@ -64,6 +117,7 @@ export default function Home({ onOpen }: { onOpen: (s: 'photo' | 'video') => voi
             </div>
           ))}
         </div>
+        <DataCard />
       </main>
     </div>
   );
