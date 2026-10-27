@@ -7,7 +7,7 @@ import type { AIKind, EditSettings, HealSpot, Mask, MaskComponent, PhotoItem } f
 import { AI_LABEL, defaultEdits, newLocalMask, MAX_MASKS } from '@/types/edits';
 import { PhotoRenderer, decodeImage, type ViewState } from './PhotoRenderer';
 import { outputToSource, sourceToOutput } from '@/engine/geometry';
-import { analyze, type SegResult } from '@/engine/ai';
+import { analyze, lastAIError, type SegResult } from '@/engine/ai';
 import { autoTone, s2l, sampleImage, writeCube } from '@/engine/color';
 import { findHealSource } from '@/engine/heal';
 import { drawScope, type ScopeKind } from '@/engine/scopes';
@@ -316,14 +316,17 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
   const ensureAI = async (kind: string): Promise<boolean> => {
     const r = rendererRef.current;
     if (!r?.work) return false;
-    if (!r.ai) {
+    // (re)run the AI when there's no result yet, or only a quick estimate from an earlier failed attempt
+    if (!r.ai || r.ai.source === 'estimate') {
       setAiBusy(kind);
       try {
         const res = await analyze(r.work, r.work.width, r.work.height, (msg, pct) => setProgress({ msg, pct }));
-        r.setAI(res);
-        setAiState(res);
-        db.put('aimaps', photo.id, res);
-        if (res.source === 'estimate') toast('AI model unavailable offline — using a quick on-device estimate. Refine with brush if needed.', 'info');
+        if (res.source === 'ai' || !r.ai) {
+          r.setAI(res);
+          setAiState(res);
+          db.put('aimaps', photo.id, res);
+        }
+        if (res.source === 'estimate') toast(`Couldn't load the AI model${lastAIError ? ` (${lastAIError.slice(0, 80)})` : ''} — using a quick estimate. Check your connection and tap again to retry.`, 'error');
       } finally {
         setAiBusy(null);
         setProgress(null);

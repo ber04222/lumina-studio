@@ -31,46 +31,76 @@ const THINGS = new Set([
 ]);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let segmenter: Promise<any> | null = null;
-let modelFailed = false;
+type Seg = any;
+const segmenters: Partial<Record<'webgpu' | 'wasm', Promise<Seg>>> = {};
+let failedAt = 0;
+export let lastAIError = '';
 
 export function aiModelState() {
-  return modelFailed ? 'failed' : segmenter ? 'loaded' : 'idle';
+  return failedAt && Date.now() - failedAt < 60000 ? 'failed' : Object.keys(segmenters).length ? 'loaded' : 'idle';
 }
 
-async function getSegmenter(onProgress?: Progress) {
-  if (modelFailed) return null;
-  if (!segmenter) {
-    segmenter = (async () => {
+async function getSegmenter(device: 'webgpu' | 'wasm', onProgress?: Progress): Promise<Seg | null> {
+  if (!segmenters[device]) {
+    segmenters[device] = (async () => {
       // Loaded from the CDN on first use (keeps the app download small; the model itself
       // comes from the Hugging Face hub and is cached by the browser afterwards).
       const tf = (await import(/* @vite-ignore */ TRANSFORMERS_CDN)) as typeof import('@huggingface/transformers');
       tf.env.allowLocalModels = false;
-      const device = typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm';
       const files: Record<string, number> = {};
-      const progress_callback = (p: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+      const progress_callback = (p: { status: string; file?: string; progress?: number }) => {
         if (p.status === 'progress' && p.file) {
           files[p.file] = p.progress ?? 0;
           const vals = Object.values(files);
-          onProgress?.('Downloading AI model (first time only)…', vals.reduce((a, b) => a + b, 0) / vals.length);
+          onProgress?.('Downloading AI model (first time only, ~10 MB)…', vals.reduce((a, b) => a + b, 0) / vals.length / 100);
         }
       };
-      try {
-        return await tf.pipeline('image-segmentation', MODEL, { device, progress_callback });
-      } catch (err) {
-        if (device === 'webgpu') return await tf.pipeline('image-segmentation', MODEL, { device: 'wasm', progress_callback });
-        throw err;
-      }
+      return tf.pipeline('image-segmentation', MODEL, { device, progress_callback });
     })();
   }
   try {
-    return await segmenter;
+    return await segmenters[device];
   } catch (err) {
-    console.warn('AI model unavailable, using estimates', err);
-    modelFailed = true;
-    segmenter = null;
-    return null;
+    delete segmenters[device];
+    throw err;
   }
+}
+
+type SegOut = { label: string | null; mask: { data: Uint8Array | Uint8ClampedArray; width: number; height: number; channels: number } }[];
+
+/** A result where one label covers almost the whole frame is a sign of a broken GPU run. */
+function plausible(out: SegOut) {
+  if (!out.length) return false;
+  if (out.length > 1) return true;
+  const m = out[0].mask;
+  let on = 0;
+  for (let i = 0; i < m.data.length; i += m.channels || 1) if (m.data[i] > 127) on++;
+  return on / (m.data.length / (m.channels || 1)) < 0.985;
+}
+
+/** Run the model: WebGPU first when available, then the CPU (WebAssembly) engine. */
+async function segment(img: HTMLCanvasElement, onProgress?: Progress): Promise<SegOut | null> {
+  if (failedAt && Date.now() - failedAt < 60000) return null; // don't hammer a failing network
+  const order: ('webgpu' | 'wasm')[] = typeof navigator !== 'undefined' && 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm'];
+  for (const device of order) {
+    try {
+      const seg = await getSegmenter(device, onProgress);
+      onProgress?.('Detecting subject, sky and people…');
+      const out: SegOut = await seg(img);
+      if (plausible(out)) {
+        failedAt = 0;
+        lastAIError = '';
+        return out;
+      }
+      lastAIError = `${device} returned an implausible result`;
+      delete segmenters[device];
+    } catch (err) {
+      lastAIError = err instanceof Error ? err.message : String(err);
+      console.warn(`AI segmentation on ${device} failed`, err);
+    }
+  }
+  failedAt = Date.now();
+  return null;
 }
 
 function downscale(src: CanvasImageSource, w: number, h: number, max: number) {
@@ -88,12 +118,10 @@ const norm = (label: string | null) => (label ?? '').split(/[;,]/)[0].trim().toL
 /** Analyse a photo. Uses the AI model when reachable, otherwise quick on-device estimates. */
 export async function analyze(src: CanvasImageSource, w: number, h: number, onProgress?: Progress): Promise<SegResult> {
   const small = downscale(src, w, h, RES);
-  const seg = await getSegmenter(onProgress);
-  if (seg) {
-    onProgress?.('Detecting subject, sky and people…');
-    try {
-      const out: { label: string | null; mask: { data: Uint8Array | Uint8ClampedArray; width: number; height: number; channels: number } }[] = await seg(small);
-      if (out.length) {
+  const out = await segment(small, onProgress);
+  if (out) {
+    {
+      {
         const mw = out[0].mask.width;
         const mh = out[0].mask.height;
         const byLabel = new Map<string, Uint8Array>();
@@ -145,8 +173,6 @@ export async function analyze(src: CanvasImageSource, w: number, h: number, onPr
         maps.background = invert(subject);
         return { w: mw, h: mh, maps, source: 'ai' };
       }
-    } catch (err) {
-      console.warn('Segmentation failed, using estimates', err);
     }
   }
   onProgress?.('Estimating selection on-device…');
@@ -307,7 +333,8 @@ export function estimateSky(c: HTMLCanvasElement): Uint8Array {
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
     const sat = mx > 0 ? (mx - mn) / mx : 0;
     const blue = b >= r - 0.02 && b >= g - 0.06;
-    const overcast = sat < 0.18 && L > 0.72;
+    const top = p / w < h * 0.6;
+    const overcast = sat < 0.24 && L > (top ? 0.6 : 0.72);
     const sunset = r > b && L > 0.55 && (p / w) < h * 0.45;
     cand[p] = L > 0.42 && (blue || overcast || sunset) ? 1 : 0;
   }
@@ -324,7 +351,7 @@ export function estimateSky(c: HTMLCanvasElement): Uint8Array {
     for (const r of nb) {
       if (r < 0 || out[r] || !cand[r]) continue;
       const dd = Math.hypot(lab[q * 3] - lab[r * 3], lab[q * 3 + 1] - lab[r * 3 + 1], lab[q * 3 + 2] - lab[r * 3 + 2]);
-      if (dd < 0.06) {
+      if (dd < 0.075) {
         out[r] = 255;
         stack.push(r);
       }
