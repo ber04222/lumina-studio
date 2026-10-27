@@ -19,21 +19,31 @@ export default function VideoStudio({ onExit }: { onExit: () => void }) {
 
   const save = React.useMemo(() => debounce((p: Project) => db.put('projects', p.id, p), 500), []);
 
+  // The editor keeps its own copy of the project and never sees the card thumbnail, so remember
+  // thumbnails here ('' = being made) and the latest version, so a late thumbnail can't save stale edits.
+  const thumbs = React.useRef(new Map<string, string>());
+  const latest = React.useRef(new Map<string, Project>());
+
   const onChange = React.useCallback(
-    (p: Project) => {
+    (p0: Project) => {
+      const known = thumbs.current.get(p0.id);
+      const p = !p0.thumb && known ? { ...p0, thumb: known } : p0;
+      latest.current.set(p.id, p);
       setProjects((l) => l?.map((x) => (x.id === p.id ? p : x)) ?? null);
       save(p);
-      // refresh the project card thumbnail from its first clip
+      // make the project card thumbnail from its first clip (once)
       const c = p.clips[0];
       const m = c && p.media.find((x) => x.id === c.mediaId);
-      if (m && !p.thumb) {
+      if (m && !p.thumb && known === undefined) {
+        thumbs.current.set(p.id, '');
         db.get<Blob>('blobs', m.id).then((b) => b && filmstrip(m, b, m.kind === 'image' ? 1 : 12, 56)).then((t) => {
-          if (t?.[0]) {
-            const np = { ...p, thumb: t[0] };
-            setProjects((l) => l?.map((x) => (x.id === p.id ? { ...x, thumb: t[0] } : x)) ?? null);
-            db.put('projects', np.id, np);
-          }
-        }).catch(() => undefined);
+          if (!t?.[0]) return void thumbs.current.delete(p.id);
+          thumbs.current.set(p.id, t[0]);
+          const np = { ...(latest.current.get(p.id) ?? p), thumb: t[0] };
+          latest.current.set(np.id, np);
+          setProjects((l) => l?.map((x) => (x.id === p.id ? { ...x, thumb: t[0] } : x)) ?? null);
+          save(np);
+        }).catch(() => thumbs.current.delete(p.id));
       }
     },
     [save],
