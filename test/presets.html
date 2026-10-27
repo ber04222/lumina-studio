@@ -1,0 +1,25 @@
+<!doctype html><html><body style="margin:0;background:#111;color:#ccc;font:11px sans-serif"><div id="g" style="display:flex;flex-wrap:wrap;gap:4px"></div><canvas id="c" width="8" height="8" style="display:none"></canvas>
+<script type="module">
+import { GL } from '/src/engine/gl.ts';
+import { Pipeline } from '/src/engine/pipeline.ts';
+import { defaultEdits } from '/src/types/edits.ts';
+import { computeStats, sampleImage, estimateAirlight } from '/src/engine/color.ts';
+import { BUILT_IN_PRESETS, applyPreset } from '/src/studios/shared/presets.ts';
+window.run = async (src, h, group) => {
+  const img = new Image(); img.src = src; await img.decode();
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const gl = new GL(document.getElementById('c')); const p = new Pipeline(gl);
+  const tex = gl.texture(); gl.upload(tex, img);
+  const sample = sampleImage(img, W, H, 256); const stats = computeStats([sample]); const air = estimateAirlight(sample);
+  const list = [{ name: 'original', e: defaultEdits() }, ...BUILT_IN_PRESETS.filter((x) => group.includes(x.group)).map((x) => ({ name: x.name, e: applyPreset(defaultEdits(), x) }))];
+  for (const { name, e } of list) {
+    const d = p.develop({ tex, w: W, h: H }, e, { fullW: W, srcStats: stats, air, masks: [] });
+    const t = gl.target(W, H, false); p.present(d, e, t, {});
+    const px = gl.read(t); gl.release(d); gl.release(t);
+    const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(new ImageData(px, W, H), 0, 0);
+    c.style.height = h + 'px';
+    const div = document.createElement('div'); div.append(c, Object.assign(document.createElement('div'), { textContent: name })); document.getElementById('g').append(div);
+  }
+  return 'ok';
+};
+</script></body></html>
