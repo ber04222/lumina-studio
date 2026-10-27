@@ -22,12 +22,12 @@ npm run preview      # serve the production build
 ### Photo studio
 | Area | What you get |
 |---|---|
-| **Edit** | Auto (smart tone + white balance), Light (exposure, contrast, highlights, shadows, whites, blacks), point Curves (RGB + per channel), Colour (temp, tint, vibrance, saturation, white-balance picker), Mix (8-band HSL), 3-way + global Grading wheels, Effects (texture, clarity, dehaze, vignette, grain), Detail (sharpening with masking, luminance and colour noise reduction), Optics (chromatic aberration, distortion), LUT |
+| **Edit** | Auto (smart tone + white balance), Light (exposure, contrast, highlights, shadows, whites, blacks), point Curves (RGB + per channel), Colour (temp, tint, vibrance, saturation, white-balance picker), Mix (8-band HSL), 3-way + global Grading wheels, Effects (texture, clarity, dehaze, vignette, grain, film glow & halation), Detail (sharpening with masking, luminance and colour noise reduction), Optics (chromatic aberration, distortion), LUT |
 | **Masking** | AI masks (Subject, Sky, Background, People, Vegetation, Water, Architecture, Ground), Brush (size/feather/flow/erase), Linear, Radial, Colour range, Luminance range. Masks can add, subtract or intersect, and each has 17 local sliders, including negative sharpness for a background blur. Adaptive presets: Enhance sky, Pop subject, Blur background, Brighten people |
 | **Remove** | Heal or clone brush. It searches for a matching source automatically, blends seamlessly, and you can drag the source to change it |
 | **Crop** | Aspect presets, free crop, straighten (auto-constrained), rotate, flip |
 | **Match** | Copy the colour, contrast and split-toning of a reference photo or video. Save the result as a preset |
-| **Presets** | 73 built-in looks (Food, Portrait, Cinematic, Hollywood, Cinematic Travel, Clean Aesthetic, Film, Film Stocks, Aesthetic, Moody, Travel, Night, B&W, Landscape) with live thumbnails and an amount slider. Save your own, or **import Lightroom presets** (.xmp, .lrtemplate, DNGs exported from Lightroom), **.cube LUTs**, or a **.zip** of any of these |
+| **Presets** | 76 built-in looks (Food, Portrait, Cinematic, Hollywood, Cinematic Travel, Clean Aesthetic, Film, Film Stocks, Aesthetic, Moody, Travel, Night, B&W, Landscape) with live thumbnails and an amount slider. Save your own, or **import Lightroom presets** (.xmp, .lrtemplate, DNGs exported from Lightroom), **.cube LUTs**, or a **.zip** of any of these |
 | **Workflow** | Before/after (split view, or hold the photo), undo/redo, copy/paste settings, sync to all photos, scopes (histogram, waveform, RGB parade, vectorscope), clipping warning, autosave |
 | **Export** | Full resolution JPEG/PNG/WebP, resized versions, batch export, share sheet, export the grade as a `.cube` LUT for Premiere/Resolve |
 

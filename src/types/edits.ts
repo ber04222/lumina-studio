@@ -81,6 +81,8 @@ export interface EditSettings {
   dehaze: number;
   vignette: { amount: number; midpoint: number; roundness: number; feather: number; highlights: number };
   grain: { amount: number; size: number; roughness: number };
+  /** film bloom around highlights + red-orange halation on bright edges (0..100) */
+  glow: { amount: number; size: number; threshold: number; halation: number };
   // Detail
   sharpen: { amount: number; radius: number; detail: number; masking: number };
   noise: { luminance: number; color: number };
@@ -136,6 +138,7 @@ export const defaultEdits = (): EditSettings => ({
   dehaze: 0,
   vignette: { amount: 0, midpoint: 50, roundness: 0, feather: 50, highlights: 0 },
   grain: { amount: 0, size: 25, roughness: 50 },
+  glow: { amount: 0, size: 50, threshold: 60, halation: 0 },
   sharpen: { amount: 0, radius: 1, detail: 25, masking: 0 },
   noise: { luminance: 0, color: 0 },
   distortion: 0,
@@ -163,6 +166,7 @@ export function normalizeEdits(e: Partial<EditSettings> | undefined | null): Edi
     grading: { ...d.grading, ...(e.grading ?? {}) },
     vignette: { ...d.vignette, ...(e.vignette ?? {}) },
     grain: { ...d.grain, ...(e.grain ?? {}) },
+    glow: { ...d.glow, ...(e.glow ?? {}) },
     sharpen: { ...d.sharpen, ...(e.sharpen ?? {}) },
     noise: { ...d.noise, ...(e.noise ?? {}) },
     crop: { ...d.crop, ...(e.crop ?? {}) },

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { ChevronLeft, Check, ImagePlus, Loader2, Trash2, X, Images, Star } from 'lucide-react';
 import type { PhotoItem } from '@/types/edits';
 import { defaultEdits, normalizeEdits } from '@/types/edits';
-import { db, debounce, requestPersistence, uid } from '@/lib/db';
+import { db, debounce, requestPersistence, storeBlob, uid } from '@/lib/db';
 import { Empty, useFilePicker, useToast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import PhotoEditor, { type Clipboard } from './photo/PhotoEditor';
@@ -66,15 +66,22 @@ export default function PhotoStudio({ onExit }: { onExit: () => void }) {
     setImporting(imgs.length);
     const added: PhotoItem[] = [];
     for (const f of imgs) {
+      const id = uid();
       try {
-        const { thumb, w, h } = await makeThumb(f);
-        const id = uid();
-        await db.put('blobs', id, f);
+        const data = await storeBlob(id, f);
+        let meta: Awaited<ReturnType<typeof makeThumb>>;
+        try {
+          meta = await makeThumb(data);
+        } catch {
+          await db.del('blobs', id);
+          throw new Error(`Couldn't read ${f.name} — this browser can't decode that format.`);
+        }
+        const { thumb, w, h } = meta;
         const p: PhotoItem = { id, name: f.name, width: w, height: h, createdAt: Date.now() + added.length, edits: defaultEdits(), masks: [], rating: 0, flag: 'none', thumb };
         await db.put('photos', id, p);
         added.push(p);
-      } catch {
-        toast(`Couldn't read ${f.name} — this browser can't decode that format.`, 'error');
+      } catch (err) {
+        toast(err instanceof Error ? err.message : `Couldn't import ${f.name}`, 'error');
       }
       setImporting((n) => n - 1);
     }

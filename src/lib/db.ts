@@ -43,6 +43,33 @@ export const db = {
   keys: (store: StoreName) => tx<IDBValidKey[]>(store, 'readonly', (s) => s.getAllKeys()).catch(() => [] as IDBValidKey[]),
 };
 
+/**
+ * Save an original file and confirm it really landed. Images are copied into memory first, so a
+ * file that can't be read (e.g. a cloud-only Google Photos item) fails here instead of leaving a
+ * library entry with no original. Throws a user-facing message on failure.
+ */
+export async function storeBlob(id: string, f: Blob, copy = true): Promise<Blob> {
+  const name = (f as File).name || 'the file';
+  let data: Blob = f;
+  if (copy) {
+    try {
+      data = new Blob([await f.arrayBuffer()], { type: f.type });
+    } catch {
+      throw new Error(`Couldn't read ${name}. If it's in Google Photos or cloud storage, download it to your phone first.`);
+    }
+  }
+  if (!data.size) throw new Error(`${name} is empty or still downloading.`);
+  try {
+    await tx('blobs', 'readwrite', (s) => s.put(data, id));
+  } catch {
+    throw new Error(`Couldn't save ${name}: not enough storage space on this device.`);
+  }
+  // quota errors surface when the transaction commits, so read back to be sure
+  const back = await db.get<Blob>('blobs', id);
+  if (!back || back.size !== data.size) throw new Error(`Couldn't save ${name} on this device (storage may be full).`);
+  return data;
+}
+
 /** Ask the browser not to evict our data (best effort). */
 export function requestPersistence() {
   navigator.storage?.persist?.().catch(() => undefined);

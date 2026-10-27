@@ -20,7 +20,7 @@ import { BUILT_IN_PRESETS, applyPreset } from '@/studios/shared/presets';
 import { usePresets } from '@/studios/photo/panels/PresetsPanel';
 import { autoTone, sampleImage } from '@/engine/color';
 import { drawScope, type ScopeKind } from '@/engine/scopes';
-import { db, uid } from '@/lib/db';
+import { db, storeBlob, uid } from '@/lib/db';
 import { acquireRenderer, releaseRenderer } from '@/lib/glResource';
 import { cn } from '@/lib/utils';
 
@@ -238,7 +238,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
       try {
         const id = uid();
         const m = await probe(f, id);
-        await db.put('blobs', id, f);
+        await storeBlob(id, f, f.type.startsWith('image/'));
         nb.set(id, f);
         added.push(m);
       } catch (err) {

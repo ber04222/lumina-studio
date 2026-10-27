@@ -1,6 +1,6 @@
 // ─── Lumina GPU pipeline: develop → blur pyramid → detail + masks → present ──
 import { GL, type Target } from './gl';
-import { BLUR_FS, COMPOSITE_FS, COPY_FS, DEVELOP_FS, DOWN_FS, FINISH_FS, PRESENT_FS, VIEW_FS } from './shaders';
+import { BLUR_FS, COMPOSITE_FS, COPY_FS, DEVELOP_FS, DOWN_FS, FINISH_FS, GLOW_EXTRACT_FS, GLOW_FS, PRESENT_FS, VIEW_FS } from './shaders';
 import { buildCurve, buildLocalTone, buildMatchLut, buildMatchMap, statsKey, buildTone, curvesActive, hueToAB, matchUniforms, wbGains, type Lut3D } from './color';
 import type { ColorStats, EditSettings, Mask } from '@/types/edits';
 import { HSL_HUES } from '@/types/edits';
@@ -299,7 +299,7 @@ export class Pipeline {
     const needB1 = e.sharpen.amount > 0 || e.noise.luminance > 0 || e.texture !== 0 || e.defringe > 0 || masks.some((m) => m.adjust.sharpness > 0 || m.adjust.noise > 0 || m.adjust.texture !== 0);
     const needB2 = e.texture !== 0 || e.clarity !== 0 || e.noise.color > 0 || e.noise.luminance > 50 || e.defringe > 0 || e.sharpen.masking > 0 || masks.some((m) => m.adjust.texture !== 0 || m.adjust.clarity !== 0 || m.adjust.sharpness < 0);
     const needB3 = e.clarity !== 0 || masks.some((m) => m.adjust.clarity !== 0 || m.adjust.sharpness < 0);
-    if (!needB1 && !needB2 && !needB3 && !masks.length) return dev;
+    if (!needB1 && !needB2 && !needB3 && !masks.length) return this.glow(dev, e);
 
     const long = Math.max(input.w, input.h);
     const scale = input.w / Math.max(1, o.fullW);
@@ -342,6 +342,33 @@ export class Pipeline {
     gl.release(b1);
     gl.release(b2);
     gl.release(b3);
+    return this.glow(out, e);
+  }
+
+  /** Film bloom + halation (spatial, sized relative to the image so export matches preview). */
+  private glow(img: Target, e: EditSettings): Target {
+    const gw = e.glow;
+    if (!gw || (gw.amount <= 0 && gw.halation <= 0)) return img;
+    const gl = this.gl;
+    const g = gl.gl;
+    const long = Math.max(img.w, img.h);
+    const ext = gl.target(img.w, img.h);
+    gl.draw(gl.program('glowx', GLOW_EXTRACT_FS), ext, (u) => {
+      g.uniform1i(u('uTex'), 0);
+      g.uniform1f(u('uThr'), 0.35 + (gw.threshold / 100) * 0.55);
+    }, [img.tex]);
+    const bg = gw.amount > 0 ? this.blur(ext, (0.008 + (gw.size / 100) * 0.04) * long) : null;
+    const bh = gw.halation > 0 ? this.blur(ext, 0.0035 * long) : null;
+    gl.release(ext);
+    const out = gl.target(img.w, img.h);
+    gl.draw(gl.program('glow', GLOW_FS), out, (u) => {
+      ['uTex', 'uGlow', 'uHal'].forEach((n, i) => g.uniform1i(u(n), i));
+      g.uniform1f(u('uGlowAmt'), gw.amount / 100);
+      g.uniform1f(u('uHalAmt'), gw.halation / 100);
+    }, [img.tex, (bg ?? img).tex, (bh ?? img).tex]);
+    gl.release(img);
+    gl.release(bg);
+    gl.release(bh);
     return out;
   }
 
@@ -488,6 +515,8 @@ const PROGRAMS: Record<string, string> = {
   blur: BLUR_FS,
   down: DOWN_FS,
   finish: FINISH_FS,
+  glowx: GLOW_EXTRACT_FS,
+  glow: GLOW_FS,
   present: PRESENT_FS,
   view: VIEW_FS,
   composite: COMPOSITE_FS,

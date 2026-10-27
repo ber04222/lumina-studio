@@ -11,7 +11,7 @@ window.run = async (src, h, group) => {
   const gl = new GL(document.getElementById('c')); const p = new Pipeline(gl);
   const tex = gl.texture(); gl.upload(tex, img);
   const sample = sampleImage(img, W, H, 256); const stats = computeStats([sample]); const air = estimateAirlight(sample);
-  const list = [{ name: 'original', e: defaultEdits() }, ...BUILT_IN_PRESETS.filter((x) => group.includes(x.group)).map((x) => ({ name: x.name, e: applyPreset(defaultEdits(), x) }))];
+  const list = [{ name: 'original', e: defaultEdits() }, ...BUILT_IN_PRESETS.filter((x) => group.includes(x.group) || group.includes(x.id)).map((x) => ({ name: x.name, e: applyPreset(defaultEdits(), x) }))];
   for (const { name, e } of list) {
     const d = p.develop({ tex, w: W, h: H }, e, { fullW: W, srcStats: stats, air, masks: [] });
     const t = gl.target(W, H, false); p.present(d, e, t, {});

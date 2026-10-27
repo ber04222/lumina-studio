@@ -232,6 +232,33 @@ void main() {
 }`;
 
 /** Detail (NR, texture, clarity, sharpen, defringe) + Lightroom-style local masks. */
+/** Bright-area extraction for glow/halation (linear light, soft knee). */
+export const GLOW_EXTRACT_FS = `${COMMON}
+uniform sampler2D uTex; uniform float uThr;
+void main() {
+  vec3 c = texture(uTex, vUv).rgb;
+  float Y = luma(c);
+  float w = smoothstep(uThr, min(uThr + 0.3, 1.02), Y);
+  outColor = vec4(s2l(c) * w, 1.0);
+}`;
+
+/** Adds bloom (neutral-warm) and halation (red-orange, tight) in linear light with a screen blend. */
+export const GLOW_FS = `${COMMON}
+uniform sampler2D uTex; uniform sampler2D uGlow; uniform sampler2D uHal;
+uniform float uGlowAmt; uniform float uHalAmt;
+void main() {
+  vec3 c = texture(uTex, vUv).rgb;
+  vec3 lin = s2l(c);
+  vec3 g = texture(uGlow, vUv).rgb;
+  float h = luma(texture(uHal, vUv).rgb);
+  // halation shows most where a bright edge meets darker surroundings
+  float edge = clamp(h - luma(lin) * 0.6, 0.0, 1.0);
+  vec3 add = g * uGlowAmt * 1.6 + vec3(1.0, 0.3, 0.08) * edge * uHalAmt * 2.4;
+  add = clamp(add, 0.0, 4.0);
+  vec3 o = lin + add * (1.0 - clamp(lin, 0.0, 1.0));
+  outColor = vec4(l2s(o), 1.0);
+}`;
+
 export const FINISH_FS = `${COMMON}
 uniform sampler2D uDev; uniform sampler2D uB1; uniform sampler2D uB2; uniform sampler2D uB3;
 uniform sampler2D uMaskA; uniform sampler2D uMaskB;

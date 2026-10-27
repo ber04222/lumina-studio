@@ -11,7 +11,7 @@ import { analyze, lastAIError, type SegResult } from '@/engine/ai';
 import { autoTone, s2l, sampleImage, writeCube } from '@/engine/color';
 import { findHealSource } from '@/engine/heal';
 import { drawScope, type ScopeKind } from '@/engine/scopes';
-import { Chips, Sheet, ToolBar, useToast } from '@/components/ui';
+import { Chips, Sheet, ToolBar, useFilePicker, useToast } from '@/components/ui';
 import { ColorPanel, CurvePanel, DetailPanel, EffectsPanel, GradingPanel, LightPanel, MixPanel, OpticsPanel } from '@/studios/shared/EditPanels';
 import { LooksPanel, MatchPanel, type RefSource } from '@/studios/shared/LookPanels';
 import { referenceFromImage } from '@/studios/shared/reference';
@@ -21,7 +21,7 @@ import { ADAPTIVE, MasksPanel, type BrushSettings, type CompType } from './panel
 import { COPY_DEFAULT, CopySettingsList, CropPanel, RemovePanel, pickGroups, type RemoveSettings } from './panels/ToolPanels';
 import { ExportSheet, type ExportRequest } from './panels/ExportSheet';
 import { CropOverlay, HealOverlay, MaskHandles, type Rect } from './Overlays';
-import { db, downloadBlob, uid } from '@/lib/db';
+import { db, downloadBlob, storeBlob, uid } from '@/lib/db';
 import { acquireRenderer, releaseRenderer } from '@/lib/glResource';
 import { cn } from '@/lib/utils';
 
@@ -56,6 +56,20 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
   const rendererRef = React.useRef<PhotoRenderer | null>(null);
   const [ready, setReady] = React.useState(false);
   const [fatal, setFatal] = React.useState<string | null>(null);
+  const [missing, setMissing] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
+  const relink = useFilePicker('image/*', false, async (files) => {
+    const f = files[0];
+    if (!f) return;
+    try {
+      await storeBlob(photo.id, f);
+      setMissing(false);
+      setFatal(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setFatal(err instanceof Error ? err.message : 'Could not save that file.');
+    }
+  });
 
   const [edits, setEdits] = React.useState<EditSettings>(photo.edits);
   const [masks, setMasks] = React.useState<Mask[]>(photo.masks);
@@ -115,7 +129,8 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
       if (!r) return;
       const blob = await getBlob(photo.id);
       if (!blob) {
-        setFatal('The original file for this photo is missing.');
+        setMissing(true);
+        setFatal('The original file for this photo wasn’t saved on this device, so it can’t be opened. Choose the same photo again to re-link it — your edits are kept.');
         return;
       }
       try {
@@ -138,7 +153,7 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photo.id]);
+  }, [photo.id, reloadKey]);
 
 
   // ── history ──────────────────────────────────────────────────────────────
@@ -689,6 +704,10 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
       <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
         <Triangle className="text-danger" />
         <p className="max-w-sm text-[14px] text-dim">{fatal}</p>
+        {missing && (
+          <button type="button" className="btn-accent" onClick={relink}>Choose the original photo…</button>
+        )}
+        {missing && photo.thumb && <img src={photo.thumb} alt="" className="h-20 w-20 rounded-lg object-cover opacity-80" />}
         <button type="button" className="btn-solid" onClick={onBack}>Back to library</button>
       </div>
     );

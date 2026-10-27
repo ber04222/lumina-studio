@@ -137,6 +137,7 @@ export function GradingPanel({ e, set, commit, wide }: EditApi & { wide?: boolea
 export function EffectsPanel({ e, set, commit }: EditApi) {
   const v = e.vignette;
   const gr = e.grain;
+  const gw = e.glow ?? { amount: 0, size: 50, threshold: 60, halation: 0 };
   return (
     <>
       <Group>
@@ -150,6 +151,12 @@ export function EffectsPanel({ e, set, commit }: EditApi) {
         <Slider label="Roundness" value={v.roundness} min={-100} max={100} disabled={!v.amount} onChange={(roundness) => set({ vignette: { ...v, roundness } })} onCommit={commit} />
         <Slider label="Feather" value={v.feather} min={0} max={100} defaultValue={50} disabled={!v.amount} onChange={(feather) => set({ vignette: { ...v, feather } })} onCommit={commit} />
         <Slider label="Highlights" value={v.highlights} min={0} max={100} disabled={!v.amount} onChange={(highlights) => set({ vignette: { ...v, highlights } })} onCommit={commit} />
+      </Group>
+      <Group title="Glow & halation">
+        <Slider label="Glow" value={gw.amount} min={0} max={100} onChange={(amount) => set({ glow: { ...gw, amount } })} onCommit={commit} />
+        <Slider label="Glow size" value={gw.size} min={0} max={100} defaultValue={50} disabled={!gw.amount} onChange={(size) => set({ glow: { ...gw, size } })} onCommit={commit} />
+        <Slider label="Threshold" value={gw.threshold} min={0} max={100} defaultValue={60} disabled={!gw.amount && !gw.halation} onChange={(threshold) => set({ glow: { ...gw, threshold } })} onCommit={commit} />
+        <Slider label="Halation" value={gw.halation} min={0} max={100} onChange={(halation) => set({ glow: { ...gw, halation } })} onCommit={commit} />
       </Group>
       <Group title="Grain">
         <Slider label="Amount" value={gr.amount} min={0} max={100} onChange={(amount) => set({ grain: { ...gr, amount } })} onCommit={commit} />
