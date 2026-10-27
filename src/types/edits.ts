@@ -28,6 +28,8 @@ export interface ColorStats {
   stdA: number;
   stdB: number;
   meanL: number;
+  /** subsampled Oklab pixels (L,a,b triplets) for full-distribution colour transfer */
+  pts?: number[];
 }
 
 export interface ColorMatch {
@@ -145,7 +147,7 @@ export const defaultEdits = (): EditSettings => ({
   flipH: false,
   flipV: false,
   lut: { id: null, name: '', amount: 100 },
-  match: { ref: null, refName: '', refThumb: '', amount: 80, color: 100, tone: 50 },
+  match: { ref: null, refName: '', refThumb: '', amount: 100, color: 100, tone: 70 },
   heals: [],
 });
 

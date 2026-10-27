@@ -23,7 +23,7 @@ export function MatchPanel({ match, onChange, sources, onSavePreset, title = 'Ma
     setBusy(id);
     try {
       const r = await fn();
-      onChange({ ...match, ref: r.stats, refName: r.name, refThumb: r.thumb, amount: match.ref ? match.amount : 80 }, true);
+      onChange({ ...match, ref: r.stats, refName: r.name, refThumb: r.thumb, amount: match.ref ? match.amount : 100 }, true);
       toast(`Matched the look of “${r.name}”`, 'ok');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Could not read that file', 'error');
@@ -66,9 +66,9 @@ export function MatchPanel({ match, onChange, sources, onSavePreset, title = 'Ma
       )}
       {match.ref && (
         <div>
-          <Slider label="Amount" value={match.amount} min={0} max={100} defaultValue={80} onChange={(amount) => onChange({ ...match, amount }, false)} onCommit={() => onChange(match, true)} />
+          <Slider label="Amount" value={match.amount} min={0} max={150} defaultValue={100} onChange={(amount) => onChange({ ...match, amount }, false)} onCommit={() => onChange(match, true)} />
           <Slider label="Colour" value={match.color} min={0} max={100} defaultValue={100} onChange={(color) => onChange({ ...match, color }, false)} onCommit={() => onChange(match, true)} />
-          <Slider label="Tone & contrast" value={match.tone} min={0} max={100} defaultValue={50} onChange={(tone) => onChange({ ...match, tone }, false)} onCommit={() => onChange(match, true)} />
+          <Slider label="Tone & contrast" value={match.tone} min={0} max={100} defaultValue={70} onChange={(tone) => onChange({ ...match, tone }, false)} onCommit={() => onChange(match, true)} />
           {onSavePreset && (
             <button type="button" className="btn-ghost mt-1 w-full" onClick={onSavePreset}>
               <Save size={15} /> Save this look as a preset

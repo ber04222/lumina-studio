@@ -1,7 +1,7 @@
 // ─── Lumina GPU pipeline: develop → blur pyramid → detail + masks → present ──
 import { GL, type Target } from './gl';
 import { BLUR_FS, COMPOSITE_FS, COPY_FS, DEVELOP_FS, DOWN_FS, FINISH_FS, PRESENT_FS, VIEW_FS } from './shaders';
-import { buildCurve, buildLocalTone, buildMatchMap, buildTone, curvesActive, hueToAB, matchUniforms, wbGains, type Lut3D } from './color';
+import { buildCurve, buildLocalTone, buildMatchLut, buildMatchMap, statsKey, buildTone, curvesActive, hueToAB, matchUniforms, wbGains, type Lut3D } from './color';
 import type { ColorStats, EditSettings, Mask } from '@/types/edits';
 import { HSL_HUES } from '@/types/edits';
 
@@ -72,6 +72,29 @@ export class Pipeline {
     for (const p of [g.TEXTURE_MIN_FILTER, g.TEXTURE_MAG_FILTER]) g.texParameteri(g.TEXTURE_3D, p, g.LINEAR);
     for (const p of [g.TEXTURE_WRAP_S, g.TEXTURE_WRAP_T, g.TEXTURE_WRAP_R]) g.texParameteri(g.TEXTURE_3D, p, g.CLAMP_TO_EDGE);
     g.texImage3D(g.TEXTURE_3D, 0, g.RGB16F, size, size, size, 0, g.RGB, g.FLOAT, data);
+    return tex;
+  }
+
+  private matchLuts = new Map<string, WebGLTexture>();
+  /** 3D LUT for the full colour transfer src → ref (cached, small LRU). */
+  private matchLut(src: ColorStats, ref: ColorStats): WebGLTexture | null {
+    if (!src.pts || !ref.pts) return null;
+    const key = statsKey(src) + '>' + statsKey(ref);
+    let tex = this.matchLuts.get(key);
+    if (tex) {
+      this.matchLuts.delete(key);
+      this.matchLuts.set(key, tex);
+      return tex;
+    }
+    const data = buildMatchLut(src, ref, 33);
+    if (!data) return null;
+    tex = this.make3D(data, 33);
+    this.matchLuts.set(key, tex);
+    if (this.matchLuts.size > 8) {
+      const [k, t] = this.matchLuts.entries().next().value!;
+      this.gl.gl.deleteTexture(t);
+      this.matchLuts.delete(k);
+    }
     return tex;
   }
 
@@ -220,6 +243,7 @@ export class Pipeline {
     const wb = wbGains(e.temp, e.tint);
     const matchOn = !!(e.match.ref && o.srcStats && e.match.amount > 0);
     const mu = matchOn ? matchUniforms(o.srcStats!, e.match.ref!) : null;
+    const mlut = matchOn ? this.matchLut(o.srcStats!, e.match.ref!) : null;
     const lutOn = !!(e.lut.id && this.lut3Id === e.lut.id && e.lut.amount > 0);
 
     gl.draw(gl.program('develop', DEVELOP_FS), dev, (u) => {
@@ -261,6 +285,10 @@ export class Pipeline {
         g.uniform2fv(u('uMRef'), mu.ref);
         g.uniform2f(u('uMStd'), mu.std[0], mu.std[1]);
       }
+      g.uniform1i(u('uMLut'), 5);
+      g.activeTexture(g.TEXTURE5);
+      g.bindTexture(g.TEXTURE_3D, mlut ?? this.lut3);
+      g.uniform1f(u('uMLutOn'), mlut ? 1 : 0);
     }, [input.tex, this.lut1, input.tex, (base ?? input).tex]);
     gl.release(base);
 

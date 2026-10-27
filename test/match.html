@@ -1,0 +1,35 @@
+<!doctype html><html><body style="margin:0;background:#111;color:#ccc;font:11px sans-serif"><div id="g"></div><canvas id="c" width="8" height="8" style="display:none"></canvas>
+<script type="module">
+// Colour-match harness: reference · source · old (mean/std) transfer · new full transfer
+import { GL } from '/src/engine/gl.ts';
+import { Pipeline } from '/src/engine/pipeline.ts';
+import { defaultEdits } from '/src/types/edits.ts';
+import { computeStats, sampleImage } from '/src/engine/color.ts';
+const load = async (src) => { const img = new Image(); img.src = src; await img.decode(); return img; };
+window.run = async (pairs, h) => {
+  const gl = new GL(document.getElementById('c')); const p = new Pipeline(gl);
+  for (const [srcUrl, refUrl] of pairs) {
+    const img = await load(srcUrl), ref = await load(refUrl);
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const tex = gl.texture(); gl.upload(tex, img);
+    const stats = computeStats([sampleImage(img, W, H, 256)]);
+    const rs = computeStats([sampleImage(ref, ref.naturalWidth, ref.naturalHeight, 256)]);
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:4px;margin-bottom:6px';
+    const add = (el, label) => { el.style.height = h + 'px'; const d = document.createElement('div'); d.append(el, Object.assign(document.createElement('div'), { textContent: label })); row.append(d); };
+    const r2 = ref.cloneNode(); add(r2, 'reference');
+    const render = (e, srcStats) => {
+      const d = p.develop({ tex, w: W, h: H }, e, { fullW: W, srcStats, masks: [] });
+      const t = gl.target(W, H, false); p.present(d, e, t, {});
+      const px = gl.read(t); gl.release(d); gl.release(t);
+      const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(new ImageData(px, W, H), 0, 0); return c;
+    };
+    add(render(defaultEdits(), stats), 'source');
+    const old = defaultEdits(); old.match = { ...old.match, ref: { ...rs, pts: undefined }, amount: 80, tone: 50 };
+    add(render(old, { ...stats, pts: undefined }), 'old match');
+    const nw = defaultEdits(); nw.match = { ...nw.match, ref: rs };
+    add(render(nw, stats), 'new match (default)');
+    document.getElementById('g').append(row);
+  }
+  return 'ok';
+};
+</script></body></html>

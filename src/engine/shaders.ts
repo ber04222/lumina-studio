@@ -85,6 +85,7 @@ uniform float uGradOn; uniform vec3 uGS; uniform vec3 uGM; uniform vec3 uGH; uni
 uniform float uPivot; uniform float uWidth;
 uniform float uMatchOn; uniform float uMColor; uniform float uMTone;
 uniform vec2 uMSrc[3]; uniform vec2 uMRef[3]; uniform vec2 uMStd;
+uniform sampler3D uMLut; uniform float uMLutOn;
 
 vec3 toneRGB(vec3 g) {
   float Y = luma(g);
@@ -109,9 +110,17 @@ void main() {
     float wm = clamp(1.0 - ws - wh, 0.0, 1.0);
     vec2 ms = ws * uMSrc[0] + wm * uMSrc[1] + wh * uMSrc[2];
     vec2 mr = ws * uMRef[0] + wm * uMRef[1] + wh * uMRef[2];
-    vec2 ab = (lab.yz - ms) * uMStd + mr;
-    lab.yz = mix(lab.yz, ab, uMColor);
-    lab.x = mix(L, lut1(L, 5, 1.0), uMTone);
+    if (uMLutOn > 0.5) {
+      // full-distribution transfer baked into a 3D LUT (per-hue, per-tone remapping)
+      vec3 c = clamp(l2s(lin), 0.0, 1.0) * (32.0 / 33.0) + 0.5 / 33.0;
+      vec3 d = toOklab(max(s2l(texture(uMLut, c).rgb), 0.0)) - lab;
+      lab.yz += d.yz * uMColor;
+      lab.x += d.x * uMTone;
+    } else {
+      vec2 ab = (lab.yz - ms) * uMStd + mr;
+      lab.yz = mix(lab.yz, ab, uMColor);
+      lab.x = mix(L, lut1(L, 5, 1.0), uMTone);
+    }
     lin = max(fromOklab(lab), 0.0);
   }
 

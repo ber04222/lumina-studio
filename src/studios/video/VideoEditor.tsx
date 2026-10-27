@@ -376,7 +376,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
   const setMatch = async (match: EditSettings['match'], doCommit: boolean) => {
     if (!clip) return;
     let srcStats = clip.srcStats;
-    if (match.ref && !srcStats) {
+    if (match.ref && !srcStats?.pts) {
       setBusy('Analysing clip…');
       srcStats = (await clipStats(clip))?.stats ?? null;
       setBusy(null);
@@ -390,7 +390,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
     const ref = clip.grade.match;
     const clips: VClip[] = [];
     for (const c of pRef.current.clips) {
-      const st = c.srcStats ?? (await clipStats(c))?.stats ?? null;
+      const st = c.srcStats?.pts ? c.srcStats : ((await clipStats(c))?.stats ?? c.srcStats ?? null);
       clips.push({ ...c, srcStats: st, grade: { ...c.grade, match: { ...ref } } });
     }
     setBusy(null);

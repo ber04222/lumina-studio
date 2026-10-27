@@ -236,6 +236,7 @@ interface StatAccum {
   samples: { L: number; a: number; b: number }[];
   sumL: number;
   n: number;
+  seed: number;
 }
 
 const newAccum = (): StatAccum => ({
@@ -246,6 +247,7 @@ const newAccum = (): StatAccum => ({
   samples: [],
   sumL: 0,
   n: 0,
+  seed: 12345,
 });
 
 const zoneW = (L: number): [number, number, number] => {
@@ -269,7 +271,13 @@ function accumulate(acc: StatAccum, img: ImageData) {
     }
     acc.sumL += L;
     acc.n++;
+    // reservoir sampling, so every frame of a video reference is represented
     if (acc.samples.length < 60000) acc.samples.push({ L, a, b });
+    else {
+      acc.seed = (acc.seed * 16807) % 2147483647;
+      const j = acc.seed % acc.n;
+      if (j < 60000) acc.samples[j] = { L, a, b };
+    }
   }
 }
 
@@ -307,6 +315,7 @@ function finish(acc: StatAccum): ColorStats {
     stdA: Math.sqrt(va / n),
     stdB: Math.sqrt(vb / n),
     meanL: acc.sumL / Math.max(1, acc.n),
+    pts: subsample(acc.samples, 3000),
   };
 }
 
@@ -314,6 +323,188 @@ export function computeStats(images: ImageData[]): ColorStats {
   const acc = newAccum();
   for (const im of images) accumulate(acc, im);
   return finish(acc);
+}
+
+function subsample(samples: { L: number; a: number; b: number }[], max: number): number[] {
+  const out: number[] = [];
+  const step = Math.max(1, samples.length / max);
+  const r = (v: number) => Math.round(v * 1e4) / 1e4;
+  for (let f = 0; f < samples.length && out.length < max * 3; f += step) {
+    const s = samples[Math.floor(f)];
+    out.push(r(s.L), r(s.a), r(s.b));
+  }
+  return out;
+}
+
+export function fromOklab(L: number, a: number, b: number): [number, number, number] {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+}
+
+/** Cheap content key for a stats object (used to cache match LUTs). */
+export function statsKey(s: ColorStats): string {
+  const p = s.pts ?? [];
+  let h = 0;
+  for (let i = 0; i < p.length; i += 7) h = (h * 31 + Math.round(p[i] * 1e4)) | 0;
+  return `${p.length}:${h}:${s.meanL.toFixed(5)}`;
+}
+
+/** 1D quantile transfer x→y (monotone, slope-limited), evaluated with linear extrapolation of the end offsets. */
+function quantileMap(px: Float32Array, py: Float32Array, K = 40) {
+  px.sort();
+  py.sort();
+  const xs = new Float32Array(K + 1);
+  const ys = new Float32Array(K + 1);
+  const q = (arr: Float32Array, t: number) => arr[Math.min(arr.length - 1, Math.round(t * (arr.length - 1)))];
+  for (let k = 0; k <= K; k++) {
+    const t = 0.004 + (k / K) * 0.992;
+    xs[k] = q(px, t);
+    ys[k] = q(py, t);
+  }
+  for (let k = 1; k <= K; k++) if (xs[k] <= xs[k - 1]) xs[k] = xs[k - 1] + 1e-4;
+  // limit slopes (no posterisation / noise blow-up), rebuilt from the median outwards
+  const mid = K >> 1;
+  for (let k = mid + 1; k <= K; k++) {
+    const dx = xs[k] - xs[k - 1];
+    ys[k] = ys[k - 1] + clamp((ys[k] - ys[k - 1]) / dx, 0.35, 1.8) * dx;
+  }
+  for (let k = mid - 1; k >= 0; k--) {
+    const dx = xs[k + 1] - xs[k];
+    ys[k] = ys[k + 1] - clamp((ys[k + 1] - ys[k]) / dx, 0.35, 1.8) * dx;
+  }
+  return (t: number) => {
+    if (t <= xs[0]) return t + (ys[0] - xs[0]);
+    if (t >= xs[K]) return t + (ys[K] - xs[K]);
+    let lo = 0;
+    let hi = K;
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (xs[m] <= t) lo = m;
+      else hi = m;
+    }
+    const f = (t - xs[lo]) / (xs[hi] - xs[lo]);
+    return ys[lo] + (ys[hi] - ys[lo]) * f;
+  };
+}
+
+/**
+ * Full colour transfer: iterative distribution transfer (Pitié et al.) in Oklab, learned on the
+ * source/reference samples and baked into a 3D LUT (sRGB in → sRGB out, unclamped).
+ * Unlike a mean/std transfer it remaps every hue and tone separately (greens, skies, skin…).
+ */
+export function buildMatchLut(src: ColorStats, ref: ColorStats, size = 33): Float32Array | null {
+  if (!src.pts?.length || !ref.pts?.length) return null;
+  const AB = 2; // weight chroma like lightness so rotations treat them comparably
+  const load = (p: number[]) => {
+    const x = new Float32Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      x[i] = p[i];
+      x[i + 1] = p[i + 1] * AB;
+      x[i + 2] = p[i + 2] * AB;
+    }
+    return x;
+  };
+  const X = load(src.pts);
+  const Y = load(ref.pts);
+  const N = size ** 3;
+  const G = new Float32Array(N * 3);
+  for (let b = 0, k = 0; b < size; b++)
+    for (let g = 0; g < size; g++)
+      for (let r = 0; r < size; r++, k += 3) {
+        const o = oklab(s2l(r / (size - 1)), s2l(g / (size - 1)), s2l(b / (size - 1)));
+        G[k] = o[0];
+        G[k + 1] = o[1] * AB;
+        G[k + 2] = o[2] * AB;
+      }
+  const G0 = Float32Array.from(G);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5;
+  const nx = X.length / 3;
+  const ny = Y.length / 3;
+  const px = new Float32Array(nx);
+  const py = new Float32Array(ny);
+  for (let it = 0; it < 12; it++) {
+    // orthonormal basis: identity first (L, a, b), then random rotations (Gram–Schmidt)
+    let R: number[][];
+    if (it === 0) R = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    else {
+      R = [];
+      while (R.length < 3) {
+        let v = [rnd(), rnd(), rnd()];
+        for (const u of R) {
+          const d = v[0] * u[0] + v[1] * u[1] + v[2] * u[2];
+          v = [v[0] - d * u[0], v[1] - d * u[1], v[2] - d * u[2]];
+        }
+        const n = Math.hypot(v[0], v[1], v[2]);
+        if (n > 1e-3) R.push([v[0] / n, v[1] / n, v[2] / n]);
+      }
+    }
+    for (const v of R) {
+      for (let i = 0; i < nx; i++) px[i] = X[i * 3] * v[0] + X[i * 3 + 1] * v[1] + X[i * 3 + 2] * v[2];
+      for (let i = 0; i < ny; i++) py[i] = Y[i * 3] * v[0] + Y[i * 3 + 1] * v[1] + Y[i * 3 + 2] * v[2];
+      const f = quantileMap(Float32Array.from(px), py);
+      const move = (P: Float32Array) => {
+        for (let i = 0; i < P.length; i += 3) {
+          const t = P[i] * v[0] + P[i + 1] * v[1] + P[i + 2] * v[2];
+          const d = f(t) - t;
+          P[i] += d * v[0];
+          P[i + 1] += d * v[1];
+          P[i + 2] += d * v[2];
+        }
+      };
+      move(X);
+      move(G);
+    }
+  }
+  // smooth the displacement field (separable box, 3 passes ≈ gaussian) so similar colours move together:
+  // a steep local remap is what turns noise into blotches
+  let D = new Float32Array(N * 3);
+  for (let i = 0; i < N * 3; i++) D[i] = G[i] - G0[i];
+  const idx = (r: number, g: number, b: number) => (b * size * size + g * size + r) * 3;
+  const R = 2;
+  for (let pass = 0; pass < 3; pass++)
+    for (let axis = 0; axis < 3; axis++) {
+      const T = new Float32Array(N * 3);
+      for (let b = 0; b < size; b++)
+        for (let g = 0; g < size; g++)
+          for (let r = 0; r < size; r++) {
+            const c = [r, g, b];
+            let sL = 0;
+            let sA = 0;
+            let sB = 0;
+            let w = 0;
+            for (let o = -R; o <= R; o++) {
+              const q = c[axis] + o;
+              if (q < 0 || q >= size) continue;
+              const cc = [...c];
+              cc[axis] = q;
+              const j = idx(cc[0], cc[1], cc[2]);
+              sL += D[j];
+              sA += D[j + 1];
+              sB += D[j + 2];
+              w++;
+            }
+            const k = idx(r, g, b);
+            T[k] = sL / w;
+            T[k + 1] = sA / w;
+            T[k + 2] = sB / w;
+          }
+      D = T;
+    }
+  const out = new Float32Array(N * 3);
+  for (let b = 0; b < size; b++)
+    for (let g = 0; g < size; g++)
+      for (let r = 0; r < size; r++) {
+        const k = idx(r, g, b);
+        const L = clamp(G0[k] + D[k], 0, 1.2);
+        const rgb = fromOklab(L, (G0[k + 1] + D[k + 1]) / AB, (G0[k + 2] + D[k + 2]) / AB);
+        out[k] = l2s(rgb[0]);
+        out[k + 1] = l2s(rgb[1]);
+        out[k + 2] = l2s(rgb[2]);
+      }
+  return out;
 }
 
 /** Uniform values for the colour-match transfer. */
