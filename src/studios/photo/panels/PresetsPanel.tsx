@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Loader2, Plus, Trash2, Upload } from 'lucide-react';
 import type { EditSettings, Mask, Preset } from '@/types/edits';
 import { BUILT_IN_PRESETS, applyPreset, presetFromEdits } from '@/studios/shared/presets';
 import { Slider } from '@/components/Slider';
-import { useToast } from '@/components/ui';
+import { useFilePicker, useToast } from '@/components/ui';
+import { importLooks } from '@/studios/shared/importers';
 import { db, uid } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +24,7 @@ export function usePresets() {
     await db.del('presets', id);
     refresh();
   };
-  return { user, save, remove };
+  return { user, save, remove, refresh };
 }
 
 export function PresetsPanel({
@@ -33,6 +34,7 @@ export function PresetsPanel({
   thumbnail,
   onApply,
   presets,
+  preloadLut,
 }: {
   e: EditSettings;
   masks: Mask[];
@@ -40,12 +42,28 @@ export function PresetsPanel({
   thumbnail: (e: EditSettings, masks: Mask[]) => string;
   onApply: (e: EditSettings, commit: boolean) => void;
   presets: ReturnType<typeof usePresets>;
+  preloadLut?: (id: string) => Promise<void>;
 }) {
   const toast = useToast();
   const [thumbs, setThumbs] = React.useState<Record<string, string>>({});
   const [active, setActive] = React.useState<{ id: string; base: EditSettings } | null>(null);
   const [amount, setAmount] = React.useState(100);
   const [naming, setNaming] = React.useState<string | null>(null);
+  const [manage, setManage] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
+  const pickImport = useFilePicker('.xmp,.lrtemplate,.zip,.cube,.dng,application/zip', true, async (files) => {
+    setImporting(true);
+    try {
+      const r = await importLooks(files);
+      await presets.refresh();
+      const parts = [`${r.presets.length - r.luts} preset${r.presets.length - r.luts === 1 ? '' : 's'}`, r.luts ? `${r.luts} LUT${r.luts === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+      toast(r.presets.length ? `Imported ${parts}${r.skipped.length ? ` · skipped ${r.skipped.length}` : ''}` : `Nothing imported${r.skipped[0] ? ` — ${r.skipped[0]}` : ''}`, r.presets.length ? 'ok' : 'error');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Import failed', 'error');
+    } finally {
+      setImporting(false);
+    }
+  });
   const all = React.useMemo(() => [...presets.user, ...BUILT_IN_PRESETS], [presets.user]);
   const groups = React.useMemo(() => [...new Set(all.map((p) => p.group))], [all]);
 
@@ -54,7 +72,10 @@ export function PresetsPanel({
     setThumbs({});
     let i = 0;
     let raf = 0;
+    let alive = true;
+    const lutIds = [...new Set(all.map((p) => p.edits.lut?.id).filter((x): x is string => !!x))];
     const next = () => {
+      if (!alive) return;
       const batch = all.slice(i, i + 3);
       if (!batch.length) return;
       const out: Record<string, string> = {};
@@ -63,8 +84,11 @@ export function PresetsPanel({
       i += 3;
       raf = requestAnimationFrame(next);
     };
-    raf = requestAnimationFrame(next);
-    return () => cancelAnimationFrame(raf);
+    Promise.all(lutIds.map((id) => preloadLut?.(id))).finally(() => (raf = requestAnimationFrame(next)));
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoKey, all.length]);
 
@@ -99,6 +123,15 @@ export function PresetsPanel({
           </button>
         </div>
       )}
+      <div className="mb-3 flex gap-2">
+        <button type="button" className="btn-solid flex-1" onClick={pickImport} disabled={importing}>
+          {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />} Import presets / LUTs
+        </button>
+        {presets.user.length > 0 && (
+          <button type="button" className={cn('btn-ghost', manage && 'text-accent')} onClick={() => setManage(!manage)}>{manage ? 'Done' : 'Manage'}</button>
+        )}
+      </div>
+      <p className="-mt-1 mb-3 text-[11px] leading-relaxed text-faint">Lightroom .xmp / .lrtemplate presets, DNGs exported from Lightroom, .cube LUTs, or a .zip of any of these.</p>
       {groups.map((g) => (
         <section key={g} className="mb-3">
           <div className="label-xs mb-1.5">{g}</div>
@@ -112,7 +145,7 @@ export function PresetsPanel({
                     <div className="truncate px-1 py-1 text-center text-[10.5px] text-dim">{p.name}</div>
                   </button>
                   {p.user && (
-                    <button type="button" aria-label={`Delete ${p.name}`} onClick={() => presets.remove(p.id)} className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white group-hover:flex">
+                    <button type="button" aria-label={`Delete ${p.name}`} onClick={() => presets.remove(p.id)} className={cn("absolute right-1 top-1 h-7 w-7 items-center justify-center rounded-full bg-danger text-white", manage ? "flex" : "hidden")}>
                       <Trash2 size={12} />
                     </button>
                   )}

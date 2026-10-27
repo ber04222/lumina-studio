@@ -855,7 +855,7 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
                   {editTab === 'looks' && <LooksPanel e={edits} set={set} commit={commit} onExportCube={exportCube} />}
                 </>
               ) : tool === 'presets' ? (
-                <PresetsPanel e={edits} masks={masks} photoKey={photo.id} presets={presets} thumbnail={(e, m) => rendererRef.current?.thumbnail(e, m, 140) ?? ''} onApply={(e, c) => { setEdits(e); stateRef.current = { ...stateRef.current, edits: e }; if (c) commit(); }} />
+                <PresetsPanel preloadLut={async (id) => { const l = await getLut(id); if (l) rendererRef.current?.pipe.setLut3D(l); }} e={edits} masks={masks} photoKey={photo.id} presets={presets} thumbnail={(e, m) => rendererRef.current?.thumbnail(e, m, 140) ?? ''} onApply={(e, c) => { setEdits(e); stateRef.current = { ...stateRef.current, edits: e }; if (c) commit(); }} />
               ) : tool === 'masks' ? (
                 <MasksPanel
                   masks={masks}

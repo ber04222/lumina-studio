@@ -62,7 +62,8 @@ async function zip(files: { name: string; data: Uint8Array | Blob }[]): Promise<
   return new Blob([...parts, ...(central as Uint8Array<ArrayBuffer>[]), e.buffer], { type: 'application/zip' });
 }
 
-async function unzip(blob: Blob): Promise<Map<string, Blob>> {
+/** Read a zip (stored or deflated entries). */
+export async function unzip(blob: Blob): Promise<Map<string, Blob>> {
   const buf = new Uint8Array(await blob.arrayBuffer());
   const v = new DataView(buf.buffer);
   let eocd = -1;
@@ -85,9 +86,15 @@ async function unzip(blob: Blob): Promise<Map<string, Blob>> {
     const comment = v.getUint16(p + 32, true);
     const local = v.getUint32(p + 42, true);
     const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
-    if (method !== 0) throw new Error('Only backups made by Lumina can be restored.');
     const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
-    out.set(name, new Blob([buf.slice(start, start + size)]));
+    const raw = buf.slice(start, start + size);
+    if (!name.endsWith('/') && !name.startsWith('__MACOSX')) {
+      if (method === 0) out.set(name, new Blob([raw]));
+      else if (method === 8 && typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        out.set(name, await new Response(stream).blob());
+      }
+    }
     p += 46 + nameLen + extra + comment;
   }
   return out;

@@ -17,6 +17,7 @@ import { ColorPanel, CurvePanel, EffectsPanel, GradingPanel, LightPanel, MixPane
 import { LooksPanel, MatchPanel, type RefSource } from '@/studios/shared/LookPanels';
 import { referenceFromImage, referenceFromVideo, type RefResult } from '@/studios/shared/reference';
 import { BUILT_IN_PRESETS, applyPreset } from '@/studios/shared/presets';
+import { usePresets } from '@/studios/photo/panels/PresetsPanel';
 import { autoTone, sampleImage } from '@/engine/color';
 import { drawScope, type ScopeKind } from '@/engine/scopes';
 import { db, uid } from '@/lib/db';
@@ -59,6 +60,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
   const [box, setBox] = React.useState({ w: 0, h: 0 });
   const [gradeClip, setGradeClip] = React.useState<EditSettings | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const userPresets = usePresets();
   const [compactUI, setCompactUI] = React.useState(() => window.innerHeight < 900);
   React.useEffect(() => {
     const on = () => setCompactUI(window.innerHeight < 900);
@@ -512,7 +514,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
         <div className="space-y-3">
           <div className="label-xs">Presets</div>
           <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1">
-            {BUILT_IN_PRESETS.map((pr) => (
+            {[...userPresets.user, ...BUILT_IN_PRESETS].map((pr) => (
               <button key={pr.id} type="button" className="chip bg-widget/50" onClick={() => { updClip(clip.id, { grade: applyPreset(clip.grade, pr) }, true); }}>{pr.name}</button>
             ))}
           </div>
