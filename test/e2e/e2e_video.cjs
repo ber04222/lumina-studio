@@ -1,0 +1,72 @@
+const { chromium, devices } = require('playwright');
+const S = (process.env.SHOTS || 'shots');
+const M = require('path').join(__dirname, '../media/');
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
+  const ctx = await b.newContext({ ...devices['iPhone 13'], acceptDownloads: true });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
+  p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
+  const shot = async (n) => { await p.waitForTimeout(800); await p.screenshot({ path: `${S}/${n}.png` }); };
+  const caps = await p.evaluate(async () => ({
+    h264: document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
+    enc: typeof VideoEncoder !== 'undefined' ? (await VideoEncoder.isConfigSupported({ codec: 'avc1.42001f', width: 640, height: 360 })).supported : 'none',
+  }));
+  console.log('caps', JSON.stringify(caps));
+  await p.goto('http://localhost:5173/#video');
+  await p.waitForTimeout(800);
+  await p.getByRole('button', { name: /New/ }).first().click();
+  await p.waitForTimeout(800);
+  await p.locator('input[type=file][accept="video/*,image/*,audio/*"]').setInputFiles([M + 'clip1.webm', M + 'chelsea.png', M + 'clip2.webm']);
+  await p.waitForTimeout(4000);
+  await shot('v01-imported');
+  await p.getByRole('button', { name: 'Play' }).click();
+  await p.waitForTimeout(1500);
+  await shot('v02-playing');
+  await p.getByRole('button', { name: 'Pause' }).click();
+  await p.getByRole('button', { name: 'Transition into clip 2' }).click();
+  await p.getByRole('button', { name: /Cross dissolve/ }).click();
+  await shot('v03-transition');
+  await p.getByRole('button', { name: /^Clip 1/ }).click();
+  await p.waitForTimeout(300);
+  await p.getByRole('button', { name: 'Color', exact: true }).click();
+  await p.getByRole('button', { name: /Auto/ }).click();
+  await p.getByRole('tab', { name: 'Wheels' }).click();
+  await shot('v04-color');
+  await p.getByRole('button', { name: 'Match', exact: true }).click();
+  await p.waitForTimeout(300);
+  await p.getByRole('button', { name: 'chelsea.png' }).first().click();
+  await p.waitForTimeout(4000);
+  await shot('v05-match');
+  // deselect then add text + music
+  await p.getByRole('button', { name: /^Clip 1/ }).click();
+  await p.keyboard.press('Escape');
+  await p.evaluate(() => document.querySelector('[aria-pressed="true"][role="button"]')?.dispatchEvent(new Event('noop')));
+  await p.locator('.no-scrollbar.relative').first().dispatchEvent('pointerdown');
+  await p.waitForTimeout(300);
+  await shot('v06-deselected');
+  await p.getByRole('button', { name: 'Text', exact: true }).click();
+  await p.waitForTimeout(300);
+  await shot('v07-title');
+  await p.locator('.no-scrollbar.relative').first().dispatchEvent('pointerdown');
+  await p.waitForTimeout(300);
+  await p.locator('input[type=file][accept="audio/*,video/*"]').setInputFiles([M + 'music.mp3']);
+  await p.waitForTimeout(3000);
+  await shot('v08-music');
+  // split at 2s
+  await p.evaluate(() => 0);
+  await p.keyboard.press('s');
+  await p.waitForTimeout(500);
+  await shot('v09-split');
+  await p.getByRole('button', { name: 'Export' }).first().click();
+  await p.waitForTimeout(500);
+  await p.getByRole('button', { name: '720p' }).click();
+  await shot('v10-export-sheet');
+  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 240000 }), p.locator('div[role=dialog] button.btn-accent').click()]);
+  const path = `${S}/${dl.suggestedFilename()}`; await dl.saveAs(path); console.log('download', path);
+  await shot('v11-exported');
+  console.log('ERRORS:\n' + errs.join('\n'));
+  await b.close();
+})().catch((e) => { console.error('FAILED', e); process.exit(1); });

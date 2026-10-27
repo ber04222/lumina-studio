@@ -1,0 +1,26 @@
+<!doctype html><html><body><script type="module">
+import { makeContext, renderMask } from '/src/engine/masks.ts';
+import { estimateSky, estimateSubject } from '/src/engine/ai.ts';
+import { defaultLocal } from '/src/types/edits.ts';
+import { wbGains, s2l } from '/src/engine/color.ts';
+window.run = async () => {
+  const img = new Image(); img.src = '/test/media/astronaut.png'; await img.decode();
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512; const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, 512, 512);
+  const ctx = makeContext(x.getImageData(0, 0, 512, 512), () => null);
+  const px = (u, v) => Array.from(ctx.src.data.slice(((v * 512 | 0) * 512 + (u * 512 | 0)) * 4, ((v * 512 | 0) * 512 + (u * 512 | 0)) * 4 + 3));
+  const suit = px(0.25, 0.75);
+  const mk = (components) => ({ id: 'm', name: 'm', visible: true, opacity: 100, components, adjust: defaultLocal() });
+  const cov = (m) => { let s = 0; for (const v of m) s += v; return +(s / m.length / 255).toFixed(3); };
+  const at = (m, u, v) => m[(v * 512 | 0) * 512 + (u * 512 | 0)];
+  const color = renderMask(mk([{ id: 'a', mode: 'add', invert: false, type: 'color', samples: [{ r: suit[0], g: suit[1], b: suit[2] }], range: 40 }]), ctx);
+  const lum = renderMask(mk([{ id: 'a', mode: 'add', invert: false, type: 'luminance', lo: 70, hi: 100, feather: 50 }]), ctx);
+  const rad = renderMask(mk([{ id: 'a', mode: 'add', invert: false, type: 'radial', cx: 0.5, cy: 0.5, rx: 0.2, ry: 0.2, angle: 0, feather: 50 }, { id: 'b', mode: 'subtract', invert: false, type: 'linear', x0: 0.5, y0: 0.0, x1: 0.5, y1: 0.5 }]), ctx);
+  const subj = estimateSubject(c); const sky = estimateSky(c);
+  // WB maths check: neutralising a warm grey should give negative temp
+  const r = s2l(0.8), g = s2l(0.7), b = s2l(0.6); const t = Math.log2(b / r) / 1.1;
+  const [gr, , gb] = wbGains(t * 100, 0); const u = -Math.log2(Math.sqrt(r * gr * b * gb) / g) / 0.35;
+  const [GR, GG, GB] = wbGains(t * 100, u * 100);
+  return { suit, colorCov: cov(color), colorOnSuit: at(color, 0.25, 0.75), colorOnFace: at(color, 0.33, 0.2), lumCov: cov(lum), radialCentre: at(rad, 0.5, 0.75), radialTop: at(rad, 0.5, 0.35), subjCov: cov(subj), skyCov: cov(sky),
+           wb: { temp: +(t * 100).toFixed(1), tint: +(u * 100).toFixed(1), out: [r * GR, g * GG, b * GB].map((v) => +v.toFixed(3)) } };
+};
+</script></body></html>

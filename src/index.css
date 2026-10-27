@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 240 4% 6%;
+  --panel: 240 3% 9.5%;
+  --raised: 240 3% 13%;
+  --widget: 240 3% 19%;
+  --line: 240 3% 20%;
+  --fg: 220 10% 94%;
+  --dim: 225 6% 64%;
+  --faint: 225 5% 42%;
+  --accent: 211 95% 62%;
+  --danger: 358 75% 59%;
+  color-scheme: dark;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  input, textarea { -webkit-user-select: text; user-select: text; }
+  button { -webkit-touch-callout: none; }
+  :focus-visible { outline: 2px solid hsl(var(--accent) / 0.8); outline-offset: 2px; }
+}
+
+@layer components {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: hsl(var(--widget)); border-radius: 3px; }
+  .label-xs { @apply text-[10px] font-medium uppercase tracking-[0.12em] text-faint; }
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 h-9 text-[13px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none; }
+  .btn-ghost { @apply btn text-dim hover:text-fg hover:bg-widget/60 active:bg-widget; }
+  .btn-solid { @apply btn bg-widget text-fg hover:bg-widget/80; }
+  .btn-accent { @apply btn bg-accent text-white hover:brightness-110; }
+  .icon-btn { @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-dim hover:text-fg active:bg-widget/70 transition-colors disabled:opacity-30 disabled:pointer-events-none; }
+  .chip { @apply shrink-0 rounded-full px-3.5 h-8 text-[13px] font-medium text-dim transition-colors whitespace-nowrap; }
+  .chip-on { @apply bg-fg text-bg; }
+  .field { @apply h-9 rounded-lg bg-widget px-3 text-[13px] text-fg outline-none focus:ring-2 focus:ring-accent/60; }
+}
+
+.checker {
+  background-color: #1a1a1d;
+  background-image: linear-gradient(45deg, #222226 25%, transparent 25%), linear-gradient(-45deg, #222226 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #222226 75%), linear-gradient(-45deg, transparent 75%, #222226 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.safe-b { padding-bottom: env(safe-area-inset-bottom); }
+.safe-t { padding-top: env(safe-area-inset-top); }
+
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.toast-in { animation: toast-in 160ms ease-out; }
+@keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet-in { animation: sheet-in 180ms cubic-bezier(.2,.8,.2,1); }

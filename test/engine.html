@@ -1,0 +1,45 @@
+<!doctype html><html><body><canvas id="c" width="64" height="64"></canvas>
+<script type="module">
+import { GL } from '/src/engine/gl.ts';
+import { Pipeline } from '/src/engine/pipeline.ts';
+import { defaultEdits } from '/src/types/edits.ts';
+import { computeStats, sampleImage } from '/src/engine/color.ts';
+window.run = async () => {
+  const out = {};
+  const src = document.createElement('canvas'); src.width = 320; src.height = 200;
+  const x = src.getContext('2d');
+  const grd = x.createLinearGradient(0,0,320,0); grd.addColorStop(0,'#000'); grd.addColorStop(1,'#fff');
+  x.fillStyle = grd; x.fillRect(0,0,320,100);
+  x.fillStyle = '#c84'; x.fillRect(0,100,160,100); x.fillStyle = '#48c'; x.fillRect(160,100,160,100);
+  const gl = new GL(document.getElementById('c'));
+  out.float = gl.floatOK; out.max = gl.maxTex;
+  const p = new Pipeline(gl);
+  const tex = gl.texture(); gl.upload(tex, src);
+  const frame = { tex, w: 320, h: 200 };
+  const stats = computeStats([sampleImage(src, 320, 200)]);
+  const px = (e, masks) => {
+    const d = p.develop(frame, e, { fullW: 320, srcStats: stats, masks });
+    const [ow, oh] = Pipeline.outputSize(e, 320, 200);
+    const t = gl.target(ow, oh, false);
+    p.present(d, e, t, {});
+    const r = gl.read(t); gl.release(d); gl.release(t);
+    const at = (xx, yy) => Array.from(r.slice((yy*ow+xx)*4, (yy*ow+xx)*4+3));
+    return { ow, oh, at };
+  };
+  const e0 = defaultEdits();
+  const id = px(e0);
+  out.identity = [id.at(0,10), id.at(160,10), id.at(319,10), id.at(80,150), id.at(240,150)];
+  const e1 = defaultEdits(); e1.exposure = 1; e1.contrast = 30; e1.highlights=-50; e1.shadows=40; e1.temp=30; e1.vibrance=40; e1.clarity=40; e1.texture=30; e1.sharpen.amount=60; e1.noise.luminance=30;
+  e1.vignette.amount=-50; e1.grain.amount=30; e1.hsl[0].sat=-100; e1.grading.shadows.s=50; e1.dehaze=30;
+  e1.curves.master=[{x:0,y:0.1},{x:0.5,y:0.6},{x:1,y:1}];
+  const r1 = px(e1); out.edited = [r1.at(0,10), r1.at(160,10), r1.at(319,10), r1.at(80,150), r1.at(240,150)];
+  const e2 = defaultEdits(); e2.crop = {x:0.25,y:0.25,w:0.5,h:0.5}; e2.rotate = 90; e2.flipH = true; e2.angle = 5;
+  const r2 = px(e2); out.geo = [r2.ow, r2.oh, r2.at(10,10), r2.at(r2.ow-10, r2.oh-10)];
+  // colour match: reference is a warm image
+  const ref = document.createElement('canvas'); ref.width=100; ref.height=100; const rx = ref.getContext('2d'); rx.fillStyle='#d9733a'; rx.fillRect(0,0,100,100); rx.fillStyle='#402010'; rx.fillRect(0,0,100,40);
+  const e3 = defaultEdits(); e3.match.ref = computeStats([sampleImage(ref,100,100)]);
+  const r3 = px(e3); out.match = [r3.at(240,150), r3.at(160,10)];
+  out.err = gl.gl.getError();
+  return out;
+};
+</script></body></html>

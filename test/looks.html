@@ -1,0 +1,37 @@
+<!doctype html><html><body style="margin:0;background:#111;color:#ccc;font:11px sans-serif"><div id="g" style="display:grid;grid-template-columns:repeat(4,300px);gap:4px"></div><canvas id="c" width="8" height="8" style="display:none"></canvas>
+<script type="module">
+import { GL } from '/src/engine/gl.ts';
+import { Pipeline } from '/src/engine/pipeline.ts';
+import { defaultEdits } from '/src/types/edits.ts';
+import { computeStats, sampleImage, estimateAirlight, autoTone } from '/src/engine/color.ts';
+import { BUILT_IN_PRESETS, applyPreset } from '/src/studios/shared/presets.ts';
+window.run = async (src, extra) => {
+  const img = new Image(); img.src = src; await img.decode();
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const gl = new GL(document.getElementById('c')); const p = new Pipeline(gl);
+  const tex = gl.texture(); gl.upload(tex, img);
+  const sample = sampleImage(img, W, H, 256); const stats = computeStats([sample]); const air = estimateAirlight(sample);
+  let ref = null;
+  if (extra) { const r = new Image(); r.src = extra; await r.decode(); ref = computeStats([sampleImage(r, r.naturalWidth, r.naturalHeight, 256)]); }
+  const show = (label, e) => {
+    const d = p.develop({ tex, w: W, h: H }, e, { fullW: W, srcStats: stats, air, masks: [] });
+    const [ow, oh] = Pipeline.outputSize(e, W, H); const t = gl.target(ow, oh, false); p.present(d, e, t, {});
+    const px = gl.read(t); gl.release(d); gl.release(t);
+    const c = document.createElement('canvas'); c.width = ow; c.height = oh; c.getContext('2d').putImageData(new ImageData(px, ow, oh), 0, 0);
+    c.style.width = '300px';
+    const div = document.createElement('div'); div.append(c, Object.assign(document.createElement('div'), { textContent: label })); document.getElementById('g').append(div);
+  };
+  show('original', defaultEdits());
+  show('auto', { ...defaultEdits(), ...autoTone(sampleImage(img, W, H, 320)) });
+  const e1 = defaultEdits(); e1.highlights = -80; e1.shadows = 70; e1.whites = 20; e1.blacks = -20; show('HDR-ish hi-80 sh+70', e1);
+  const e2 = defaultEdits(); e2.exposure = 1.5; e2.highlights = -60; show('expo +1.5, hi -60', e2);
+  const e3 = defaultEdits(); e3.clarity = 70; e3.texture = 50; e3.dehaze = 40; show('clarity70 tex50 dehaze40', e3);
+  const e4 = defaultEdits(); e4.temp = -50; e4.tint = 30; e4.vibrance = 60; show('temp-50 tint+30 vib+60', e4);
+  const e5 = defaultEdits(); e5.hsl[1] = { hue: -50, sat: 60, lum: 30 }; e5.hsl[3] = { hue: 60, sat: -80, lum: -40 }; show('HSL orange+/green-', e5);
+  const e6 = defaultEdits(); e6.contrast = -60; e6.saturation = -60; show('con-60 sat-60', e6);
+  for (const id of ['cin-teal', 'film-warm', 'bw-noir', 'food-pop', 'por-glow', 'cin-moody']) show(id, applyPreset(defaultEdits(), BUILT_IN_PRESETS.find((x) => x.id === id)));
+  if (ref) { const e = defaultEdits(); e.match.ref = ref; show('match → ref (default)', e); const e2b = defaultEdits(); e2b.match = { ...e2b.match, ref, amount: 100, tone: 100 }; show('match 100/100', e2b); }
+  const e7 = defaultEdits(); e7.vignette = { ...e7.vignette, amount: -60 }; e7.grain = { amount: 50, size: 30, roughness: 60 }; e7.sharpen.amount = 100; show('vignette, grain, sharpen', e7);
+  return 'ok';
+};
+</script></body></html>
