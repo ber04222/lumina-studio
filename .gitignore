@@ -25,3 +25,12 @@ dist-ssr
 
 # stray test output
 undefined/
+
+# secrets — never commit keys (this repo and the site are public)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets.*

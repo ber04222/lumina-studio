@@ -15,6 +15,12 @@ Everything runs on-device (WebGL2 + IndexedDB); no backend, no accounts.
 - `public/sw.js` caches assets (`CACHE` constant). Navigations are network-first, so the phone gets new builds on next open. Bump `CACHE` only when changing caching behaviour.
 - Commits must use the GitHub noreply email (`121864364+ber04222@users.noreply.github.com`, name `ber04222`) — the repo is public; never commit a work email.
 
+## Secrets (strict)
+- This app is a static site: anything in `src/`, `public/` or `dist/` is downloadable by anyone. **Never put an API key in the app's code**, in `VITE_*` env vars, or in localStorage defaults — it would be public.
+- If a feature ever needs a paid API, it must go through a small server-side proxy that holds the key, never the browser.
+- Never commit `.env` files or keys (they're in `.gitignore`). CI runs gitleaks on every push, and GitHub secret scanning with push protection is on.
+- If a key is ever committed or pasted somewhere public: revoke/rotate it immediately at the provider. Deleting the commit is not enough.
+
 ## Architecture (see README for the feature list)
 - `src/engine/` — framework-free GPU + colour science
   - `pipeline.ts`: develop → finish (detail + up to 8 local masks) → glow/halation → present (geometry, vignette, grain). The preview and export run the same passes. Spatial effects are sized relative to the image.
