@@ -311,7 +311,7 @@ export default function Timeline(props: Props) {
                   }}
                 >
                   {wave && <Wave peaks={wave} from={a.in / (m?.duration || 1)} to={a.out / (m?.duration || 1)} width={Math.max(8, w)} height={28} color="rgba(190,255,215,.75)" />}
-                  <span className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 text-[10px] text-white/90"><Music2 size={10} /> {m?.name}</span>
+                  <span className="pointer-events-none absolute left-1 top-0.5 flex max-w-[calc(100%-8px)] items-center gap-1 truncate rounded bg-black/55 px-1 text-[10px] text-white"><Music2 size={10} className="shrink-0" /> {m?.name}</span>
                   {on && (
                     <>
                       <span className="absolute left-0 top-0 h-full w-3 cursor-ew-resize bg-white/85" onPointerDown={(e) => {

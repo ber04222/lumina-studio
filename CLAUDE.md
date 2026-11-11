@@ -28,6 +28,7 @@ Everything runs on-device (WebGL2 + IndexedDB); no backend, no accounts.
   - `color.ts`: tone/curve LUTs (1D LUT texture R32F 1024×7: tone, r, g, b, master, matchL, localTone), auto tone, `.cube` I/O, and **colour match**.
     - Colour match: `computeStats` keeps 3000 Oklab samples (`pts`). `buildMatchLut` runs an iterative distribution transfer (Pitié) in Oklab and bakes it into a 33³ 3D LUT, smoothed in colour space so noise isn't amplified. Stats without `pts` (old saves) fall back to the zone mean/std transfer.
   - `masks.ts`, `ai.ts` (SegFormer-b0 ADE20K via transformers.js from CDN; webgpu → wasm, with offline estimates), `heal.ts`, `scopes.ts`, `geometry.ts`.
+    - Sky: the model's sky is checked with `skyPlausible()`; if it is empty or misplaced, `repairSky()` swaps in `estimateSky()` (colour-based: smooth, touches the top edge, stops at the horizon) or drops it so the UI says "no sky found". `repairSky` also runs on saved `aimaps` results, so old bad results heal on the next Sky tap. Never store an all-zero map as "available".
 - `src/studios/photo/` — library, editor, renderer, panels. `src/studios/video/` — projects, timeline, player (wall-clock playback), compositor, exporter (mediabunny, WebCodecs). `src/studios/shared/` — edit panels, presets (`presets.ts`, 76 built-ins), LUT library, Lightroom/LUT importers, colour-match references.
 - `src/lib/db.ts` — IndexedDB stores: blobs, photos, projects, presets, luts, aimaps, meta.
   - Save originals with `storeBlob()`, which copies, writes and reads back. Never call `db.put('blobs', …)` directly.
@@ -36,7 +37,7 @@ Everything runs on-device (WebGL2 + IndexedDB); no backend, no accounts.
 
 ## Testing
 - Harness pages (with `npm run dev`): `test/presets.html` (renders preset groups), `test/match.html` (reference · source · old vs new match), `test/engine.html`, `test/looks.html`, `test/masks.html`.
-- Playwright flows: `test/e2e/*.cjs`. Headless Chromium needs `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`, and Google Fonts must be route-aborted, or screenshots hang.
+- Playwright flows: `test/e2e/*.cjs` (`e2e_sky.cjs` checks sky detection and needs no network). Headless Chromium needs `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`, and Google Fonts must be route-aborted, or screenshots hang.
 - Software GL is slow: playback follows the real clock, so don't take a screenshot between Play and Pause.
 - Always look at rendered output for visual changes (presets, match, effects); type-checks don't catch looks that are too weak or too strong.
 

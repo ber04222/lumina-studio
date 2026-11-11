@@ -626,7 +626,7 @@ export default function VideoEditor({ project, onChange, onBack }: VideoEditorPr
 
       <div className="safe-b shrink-0 border-t border-line bg-panel">
         <ToolBar
-          className="justify-start md:justify-center"
+          className="justify-start md:justify-center [&>button]:flex-1 md:[&>button]:flex-none"
           value={panel === 'none' ? '' : panel}
           onChange={(id) => tools.find((t) => t.id === id)?.fn()}
           items={tools.map((t) => ({ id: t.id, label: t.label, icon: t.icon }))}

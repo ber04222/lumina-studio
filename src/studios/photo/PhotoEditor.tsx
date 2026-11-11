@@ -7,7 +7,7 @@ import type { AIKind, EditSettings, HealSpot, Mask, MaskComponent, PhotoItem } f
 import { AI_LABEL, defaultEdits, newLocalMask, MAX_MASKS } from '@/types/edits';
 import { PhotoRenderer, decodeImage, type ViewState } from './PhotoRenderer';
 import { outputToSource, sourceToOutput } from '@/engine/geometry';
-import { analyze, lastAIError, type SegResult } from '@/engine/ai';
+import { analyze, lastAIError, repairSky, type SegResult } from '@/engine/ai';
 import { autoTone, s2l, sampleImage, writeCube } from '@/engine/color';
 import { findHealSource } from '@/engine/heal';
 import { drawScope, type ScopeKind } from '@/engine/scopes';
@@ -347,8 +347,18 @@ export default function PhotoEditor({ photo, library, getBlob, onUpdate, onBack,
         setProgress(null);
       }
     }
+    // results saved by older versions may hold an empty or misplaced sky: check them once
+    if (kind === 'sky' && r.ai) {
+      const fixed = repairSky(r.ai, r.work, r.work.width, r.work.height);
+      if (fixed) {
+        r.setAI(fixed);
+        setAiState(fixed);
+        db.put('aimaps', photo.id, fixed);
+      }
+    }
     if (!r.hasAI(kind)) {
-      toast(r.ai?.source === 'estimate' ? `${AI_LABEL[kind as AIKind]} needs the AI model (connect to the internet once).` : `No ${AI_LABEL[kind as AIKind].toLowerCase()} detected in this photo.`, 'error');
+      const name = AI_LABEL[kind as AIKind].toLowerCase();
+      toast(r.ai?.source === 'estimate' ? `Couldn't find the ${name} without the AI model. Connect to the internet once, or paint it with the Brush.` : `No ${name} found in this photo. You can paint it with the Brush instead.`, 'error');
       return false;
     }
     return true;

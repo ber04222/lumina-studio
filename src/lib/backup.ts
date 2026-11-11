@@ -1,5 +1,5 @@
 // ─── Library backup / restore (.zip, stored entries, no dependencies) ────────
-import { db, type StoreName } from './db';
+import { db, storeBlob, type StoreName } from './db';
 
 const CRC = (() => {
   const t = new Uint32Array(256);
@@ -100,6 +100,9 @@ export async function unzip(blob: Blob): Promise<Map<string, Blob>> {
   return out;
 }
 
+/** The zip writer has no Zip64, so offsets and sizes must stay below 4 GB. */
+const ZIP_LIMIT = 0xffffffff;
+
 const TABLES: StoreName[] = ['photos', 'projects', 'presets', 'luts'];
 
 /** Everything needed to rebuild the library: originals, edits, projects, presets and LUTs. */
@@ -120,10 +123,15 @@ export async function createBackup(onProgress?: (msg: string) => void): Promise<
     manifest[t] = rows;
   }
   const blobKeys = (await db.keys('blobs')).map(String);
+  let total = 0;
   for (let i = 0; i < blobKeys.length; i++) {
     onProgress?.(`Packing media ${i + 1} of ${blobKeys.length}…`);
     const b = await db.get<Blob>('blobs', blobKeys[i]);
-    if (b) files.push({ name: `media/${blobKeys[i]}`, data: b });
+    if (!b) continue;
+    total += b.size;
+    if (total > ZIP_LIMIT)
+      throw new Error('Your library is over 4 GB, which is too large for a single backup file. Delete some videos or back up in parts.');
+    files.push({ name: `media/${blobKeys[i]}`, data: b });
   }
   files.unshift({ name: 'manifest.json', data: enc.encode(JSON.stringify(manifest)) });
   return { blob: await zip(files), count: blobKeys.length };
@@ -135,7 +143,7 @@ export async function restoreBackup(file: Blob): Promise<{ photos: number; proje
   if (!m) throw new Error('This is not a Lumina backup file.');
   const manifest = JSON.parse(await m.text());
   if (manifest.app !== 'lumina-studio') throw new Error('This is not a Lumina backup file.');
-  for (const [name, b] of entries) if (name.startsWith('media/')) await db.put('blobs', name.slice(6), b);
+  for (const [name, b] of entries) if (name.startsWith('media/')) await storeBlob(name.slice(6), b, false);
   for (const t of TABLES) {
     for (const { key, value } of (manifest[t] ?? []) as { key: string; value: Record<string, unknown> }[]) {
       if (t === 'luts') {
